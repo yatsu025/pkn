@@ -47,8 +47,13 @@ export default function QuizPlayPage() {
   const supabase = createClient()
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const lastTickRef = useRef<number>(0)
+  const beepAudioRef = useRef<HTMLAudioElement | null>(null)
+  const lastPlayedSecondRef = useRef<number | null>(null)
 
   useEffect(() => {
+    // Initialize beep sound
+    beepAudioRef.current = new Audio('/sound/Beep Sound.wav')
+    
     const email = sessionStorage.getItem('quiz_user_email')
     const name = sessionStorage.getItem('quiz_user_name')
     if (!email) {
@@ -99,12 +104,17 @@ export default function QuizPlayPage() {
       .subscribe()
 
     return () => {
+      if (beepAudioRef.current) {
+        beepAudioRef.current.pause()
+        beepAudioRef.current = null
+      }
       supabase.removeChannel(channel)
     }
   }, [router])
 
   useEffect(() => {
     if (quizStatus === 'active') {
+      lastPlayedSecondRef.current = null // Reset beep tracking for new question
       startTimer()
     } else {
       stopTimer()
@@ -123,6 +133,17 @@ export default function QuizPlayPage() {
 
       setTimeLeft((prev) => {
         const next = prev - delta
+
+        // Beep logic for last 5 seconds (5s, 4s, 3s, 2s, 1s)
+        const currentSecond = Math.floor(next / 1000)
+        if (next > 0 && next <= 5000 && currentSecond !== lastPlayedSecondRef.current) {
+          if (beepAudioRef.current) {
+            beepAudioRef.current.currentTime = 0
+            beepAudioRef.current.play().catch(() => {}) // Silently ignore play errors (e.g. user hasn't interacted)
+          }
+          lastPlayedSecondRef.current = currentSecond
+        }
+
         if (next <= 0) {
           handleNextQuestion()
           return 10000
